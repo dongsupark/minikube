@@ -191,8 +191,24 @@ func (k *KubectlRunner) DeleteNamespace(namespace string) error {
 
 func (k *KubectlRunner) GetPod(name, namespace string) *api.Pod {
 	p := &api.Pod{}
-	if err := k.RunCommandParseOutput([]string{"get", "pod", name, "--namespace=" + namespace}, p); err != nil {
+	if err := k.getPodCommon(name, namespace, p); err != nil {
 		k.T.Fatalf("Error checking pod status: %s", err)
 	}
 	return p
+}
+
+func (k *KubectlRunner) GetPodNoFail(name, namespace string) *api.Pod {
+	p := &api.Pod{}
+	if err := k.getPodCommon(name, namespace, p); err != nil {
+		k.T.Logf("Error checking pod status: %s", err)
+		return nil
+	}
+	return p
+}
+
+func (k *KubectlRunner) getPodCommon(name, namespace string, p *api.Pod) error {
+	if err := k.RunCommandParseOutput([]string{"get", "pod", name, "--namespace=" + namespace}, p); err != nil {
+		return err
+	}
+	return nil
 }

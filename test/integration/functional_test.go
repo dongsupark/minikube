@@ -32,6 +32,7 @@ func TestFunctional(t *testing.T) {
 	minikubeRunner.EnsureRunning()
 
 	t.Run("DNS", testClusterDNS)
+	t.Run("DNSCalicoRkt", testClusterDNSCalicoRkt)
 	t.Run("EnvVars", testClusterEnv)
 	t.Run("Logs", testClusterLogs)
 	t.Run("SSH", testClusterSSH)

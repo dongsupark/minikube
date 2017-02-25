@@ -67,3 +67,62 @@ func testClusterDNS(t *testing.T) {
 		t.Fatal("DNS lookup failed with error:", err)
 	}
 }
+
+func testClusterDNSCalicoRkt(t *testing.T) {
+	t.Parallel()
+	kubectlRunner := util.NewKubectlRunner(t)
+	podName := "calico-node"
+	podPath, _ := filepath.Abs("testdata/calico.yaml")
+
+	minikubeRunner := util.MinikubeRunner{
+		Args:       fmt.Sprintf("%s --container-runtime=rkt --network-plugin=cni", *args),
+		BinaryPath: *binaryPath,
+		T:          t}
+
+	minikubeRunner.RunCommand("start", true)
+	minikubeRunner.CheckStatus("Running")
+
+	minikubeRunner.RunCommand("ssh mkdir --parents /var/run/calico", false)
+
+	//     kubectlRunner.RunCommand([]string{"get", "pods"})
+
+	//         podNamespace := "kube-system"
+	podNamespace := "default"
+	//         defer kubectlRunner.DeleteNamespace(podNamespace)
+
+	if _, err := kubectlRunner.RunCommand([]string{"create", "-f", podPath, "--namespace=" + podNamespace, "--validate=false"}); err != nil {
+		t.Fatalf("createPod with error:", err)
+	}
+
+	checkPod := func() error {
+		p := kubectlRunner.GetPodNoFail(podName, podNamespace)
+		if p == nil || !kubectlRunner.IsPodReady(p) {
+			return &commonutil.RetriableError{Err: fmt.Errorf("Pod %s is not ready yet.", podName)}
+		}
+		return nil
+	}
+	if err := commonutil.RetryAfter(40, checkPod, 5*time.Second); err != nil {
+		t.Fatalf("Error checking the status of pod %s. Err: %s", podName, err)
+	}
+
+	runDNSLookup := func() error {
+		dnsByteArr, err := kubectlRunner.RunCommand([]string{"exec", podName, "--namespace=" + podNamespace,
+			"nslookup", "kubernetes.default"})
+		dnsOutput := string(dnsByteArr)
+		if err != nil {
+			return &commonutil.RetriableError{Err: err}
+		}
+
+		if !strings.Contains(dnsOutput, "10.0.0.1") || !strings.Contains(dnsOutput, "10.0.0.10") {
+			return fmt.Errorf("DNS lookup failed, could not find both 10.0.0.1 and 10.0.0.10.  Output: %s", dnsOutput)
+		}
+		return nil
+	}
+	if err := commonutil.RetryAfter(20, runDNSLookup, 5*time.Second); err != nil {
+		t.Fatal("DNS lookup failed with error:", err)
+	}
+
+	kubectlRunner.RunCommand([]string{"delete", "-f", podPath, "--namespace=" + podNamespace})
+	minikubeRunner.RunCommand("stop", true)
+	minikubeRunner.CheckStatus("Stopped")
+}
